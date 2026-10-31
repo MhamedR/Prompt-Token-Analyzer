@@ -1,4 +1,5 @@
-import { MODELS, PRICING_CATALOG, type ModelDefinition } from '../config/models.js';
+import { ModelCatalog } from '../config/model-catalog.js';
+import { PRICING_CATALOG, type ModelDefinition } from '../config/models.js';
 import { estimateCost } from '../domain/cost.js';
 import {
   MAX_CHARACTERS_PER_FIELD,
@@ -7,7 +8,7 @@ import {
 } from '../domain/limits.js';
 import { countCharacters, countWords, type TextStats } from '../domain/text-stats.js';
 import { AppError } from '../errors/app-error.js';
-import { TokenizerError } from '../tokenizers/tokenizer-provider.js';
+import { TokenizerError, type ProviderStatus, type TokenAccuracy, type TokenCount } from '../tokenizers/tokenizer-provider.js';
 import type { TokenizerRegistry } from '../tokenizers/tokenizer-registry.js';
 
 export interface CountRequest {
@@ -15,13 +16,12 @@ export interface CountRequest {
   text: string;
 }
 
-export interface CountResponse {
+export interface CountResponse extends TokenMetadata {
   model: string;
-  encoding: string;
+  provider: ModelDefinition['provider'];
   wordCount: number;
   characterCount: number;
   tokenCount: number;
-  estimate: true;
   limitations: readonly string[];
 }
 
@@ -33,9 +33,8 @@ export interface AnalyzeRequest {
   expectedOutputTokens: number;
 }
 
-export interface AnalyzeResponse {
+export interface AnalyzeResponse extends TokenMetadata {
   model: string;
-  encoding: string;
   provider: ModelDefinition['provider'];
   systemPromptTokens: number;
   userPromptTokens: number;
@@ -50,25 +49,24 @@ export interface AnalyzeResponse {
     userPrompt: TextStats;
     context: TextStats;
   };
-  estimatedInputCostUsd: number;
-  estimatedOutputCostUsd: number;
-  totalEstimatedCostUsd: number;
+  estimatedInputCostUsd: number | null;
+  estimatedOutputCostUsd: number | null;
+  totalEstimatedCostUsd: number | null;
   currency: 'USD';
   pricing: {
-    inputPricePerMillionUsd: number;
-    outputPricePerMillionUsd: number;
+    inputPricePerMillionUsd: number | null;
+    outputPricePerMillionUsd: number | null;
     cachedInputPricePerMillionUsd: number | null;
-    tier: string;
     source: string;
     verifiedOn: string;
     note: string;
   };
-  estimate: true;
   limitations: readonly string[];
 }
 
 export interface ModelsResponse {
   models: ModelDefinition[];
+  providers: ProviderStatus[];
   pricing: typeof PRICING_CATALOG;
   limits: {
     maxCharactersPerField: number;
@@ -77,12 +75,31 @@ export interface ModelsResponse {
   limitations: readonly string[];
 }
 
+interface SectionCount {
+  wordCount: number;
+  characterCount: number;
+  count: TokenCount;
+}
+
+interface TokenMetadata {
+  providerDisplayName: string;
+  modelDisplayName: string;
+  tokenizerMethod: string;
+  accuracy: TokenAccuracy;
+  accuracyNote: string;
+  countingOnly: true;
+}
+
 export class AnalysisService {
-  constructor(private readonly tokenizers: TokenizerRegistry) {}
+  constructor(
+    private readonly catalog: ModelCatalog,
+    private readonly tokenizers: TokenizerRegistry,
+  ) {}
 
   listModels(): ModelsResponse {
     return {
-      models: [...MODELS],
+      models: [...this.catalog.list()],
+      providers: this.tokenizers.describe(),
       pricing: PRICING_CATALOG,
       limits: {
         maxCharactersPerField: MAX_CHARACTERS_PER_FIELD,
@@ -92,93 +109,111 @@ export class AnalysisService {
     };
   }
 
-  count(request: CountRequest): CountResponse {
-    const model = this.requireModel(request.model);
-    const stats = this.statsFor(model, request.text);
+  async count(request: CountRequest): Promise<CountResponse> {
+    const model = this.catalog.require(request.model);
+    const stats = await this.statsFor(model, request.text);
 
     return {
+      ...this.metadata(model, stats.count),
       model: model.id,
-      encoding: model.encoding,
+      provider: model.provider,
       wordCount: stats.wordCount,
       characterCount: stats.characterCount,
-      tokenCount: stats.tokenCount,
-      estimate: true,
+      tokenCount: stats.count.tokenCount,
       limitations: TOKEN_ESTIMATE_LIMITATIONS,
     };
   }
 
-  analyze(request: AnalyzeRequest): AnalyzeResponse {
-    const model = this.requireModel(request.model);
-    const systemPrompt = this.statsFor(model, request.systemPrompt);
-    const userPrompt = this.statsFor(model, request.userPrompt);
-    const context = this.statsFor(model, request.context);
-    const totalInputTokens = systemPrompt.tokenCount + userPrompt.tokenCount + context.tokenCount;
-    const costs = estimateCost(totalInputTokens, request.expectedOutputTokens, model);
+  async analyze(request: AnalyzeRequest): Promise<AnalyzeResponse> {
+    const model = this.catalog.require(request.model);
+    const [systemPrompt, userPrompt, context] = await Promise.all([
+      this.statsFor(model, request.systemPrompt),
+      this.statsFor(model, request.userPrompt),
+      this.statsFor(model, request.context),
+    ]);
+    const totalInputTokens =
+      systemPrompt.count.tokenCount + userPrompt.count.tokenCount + context.count.tokenCount;
+    const costs = this.costFor(model, totalInputTokens, request.expectedOutputTokens);
 
     return {
+      ...this.metadata(model, userPrompt.count),
       model: model.id,
-      encoding: model.encoding,
       provider: model.provider,
-      systemPromptTokens: systemPrompt.tokenCount,
-      userPromptTokens: userPrompt.tokenCount,
-      contextTokens: context.tokenCount,
+      systemPromptTokens: systemPrompt.count.tokenCount,
+      userPromptTokens: userPrompt.count.tokenCount,
+      contextTokens: context.count.tokenCount,
       totalInputTokens,
       expectedOutputTokens: request.expectedOutputTokens,
       totalTokens: totalInputTokens + request.expectedOutputTokens,
       wordCount: systemPrompt.wordCount + userPrompt.wordCount + context.wordCount,
       characterCount:
         systemPrompt.characterCount + userPrompt.characterCount + context.characterCount,
-      sections: { systemPrompt, userPrompt, context },
-      estimatedInputCostUsd: costs.estimatedInputCostUsd,
-      estimatedOutputCostUsd: costs.estimatedOutputCostUsd,
-      totalEstimatedCostUsd: costs.totalEstimatedCostUsd,
+      sections: {
+        systemPrompt: this.section(systemPrompt),
+        userPrompt: this.section(userPrompt),
+        context: this.section(context),
+      },
+      estimatedInputCostUsd: costs?.estimatedInputCostUsd ?? null,
+      estimatedOutputCostUsd: costs?.estimatedOutputCostUsd ?? null,
+      totalEstimatedCostUsd: costs?.totalEstimatedCostUsd ?? null,
       currency: 'USD',
       pricing: {
         inputPricePerMillionUsd: model.inputPricePerMillionUsd,
         outputPricePerMillionUsd: model.outputPricePerMillionUsd,
         cachedInputPricePerMillionUsd: model.cachedInputPricePerMillionUsd,
-        tier: PRICING_CATALOG.tier,
-        source: PRICING_CATALOG.source,
-        verifiedOn: PRICING_CATALOG.verifiedOn,
-        note: PRICING_CATALOG.note,
+        source: model.priceSource,
+        verifiedOn: model.priceVerifiedOn,
+        note: model.priceNote,
       },
-      estimate: true,
       limitations: TOKEN_ESTIMATE_LIMITATIONS,
     };
   }
 
-  /** Loads each configured encoding once so a bad catalog fails at startup. */
-  warmTokenizers(): void {
-    for (const model of MODELS) {
-      this.tokensFor(model, '');
-    }
+  async warmTokenizers(): Promise<void> {
+    await this.tokenizers.warm(this.catalog.list());
   }
 
-  private requireModel(modelId: string): ModelDefinition {
-    const model = MODELS.find((item) => item.id === modelId);
-    if (!model) {
-      throw new AppError('UNSUPPORTED_MODEL', `Model "${modelId}" is not supported.`, 400, [
-        {
-          field: 'model',
-          message: `Supported models: ${MODELS.map((item) => item.id).join(', ')}.`,
-        },
-      ]);
-    }
-
-    return model;
-  }
-
-  private statsFor(model: ModelDefinition, text: string): TextStats {
+  private metadata(model: ModelDefinition, count: TokenCount): TokenMetadata {
     return {
-      wordCount: countWords(text),
-      characterCount: countCharacters(text),
-      tokenCount: this.tokensFor(model, text),
+      providerDisplayName: model.providerDisplayName,
+      modelDisplayName: model.displayName,
+      tokenizerMethod: count.method,
+      accuracy: count.accuracy,
+      accuracyNote: count.accuracyNote,
+      countingOnly: true,
     };
   }
 
-  private tokensFor(model: ModelDefinition, text: string): number {
+  private async statsFor(model: ModelDefinition, text: string): Promise<SectionCount> {
+    return {
+      wordCount: countWords(text),
+      characterCount: countCharacters(text),
+      count: await this.tokensFor(model, text),
+    };
+  }
+
+  private section(stats: SectionCount): TextStats {
+    return {
+      wordCount: stats.wordCount,
+      characterCount: stats.characterCount,
+      tokenCount: stats.count.tokenCount,
+    };
+  }
+
+  private costFor(model: ModelDefinition, inputTokens: number, outputTokens: number) {
+    if (model.inputPricePerMillionUsd === null || model.outputPricePerMillionUsd === null) {
+      return null;
+    }
+
+    return estimateCost(inputTokens, outputTokens, {
+      inputPricePerMillionUsd: model.inputPricePerMillionUsd,
+      outputPricePerMillionUsd: model.outputPricePerMillionUsd,
+    });
+  }
+
+  private async tokensFor(model: ModelDefinition, text: string): Promise<TokenCount> {
     try {
-      return this.tokenizers.countTokens(model.provider, model.encoding, text);
+      return await this.tokenizers.countTokens(model, text);
     } catch (error) {
       if (error instanceof TokenizerError) {
         const status = error.code === 'TOKENIZE_FAILED' ? 400 : 500;

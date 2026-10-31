@@ -1,3 +1,26 @@
+import type { ModelDefinition } from '../config/models.js';
+
+export type TokenAccuracy = 'exact' | 'approximate' | 'api-reported';
+
+export interface TokenCount {
+  tokenCount: number;
+  accuracy: TokenAccuracy;
+  /** Human-readable tokenizer or count endpoint. Not a generation call. */
+  method: string;
+  accuracyNote: string;
+  /** True when this result did not call a model generation endpoint. */
+  countingOnly: true;
+}
+
+export interface ProviderStatus {
+  id: string;
+  displayName: string;
+  /** local means no network call. count-api means a token-counting endpoint, not generation. */
+  counting: 'local' | 'count-api';
+  apiKeyConfigured: boolean;
+  apiKeyEnv: string | null;
+}
+
 export class TokenizerError extends Error {
   constructor(
     message: string,
@@ -9,11 +32,16 @@ export class TokenizerError extends Error {
 }
 
 /**
- * One tokenizer implementation per model provider.
- * Register a new class when adding Anthropic, Google, or Meta models.
+ * One implementation per model provider.
+ * Register a new class in createTokenizerRegistry. The analysis service
+ * only talks to this interface.
  */
 export interface TokenizerProvider {
   readonly id: string;
-  supportsEncoding(encoding: string): boolean;
-  countTokens(encoding: string, text: string): number;
+  readonly displayName: string;
+  readonly apiKeyEnv: string | null;
+  supports(model: ModelDefinition): boolean;
+  describe(): ProviderStatus;
+  countTokens(model: ModelDefinition, text: string): Promise<TokenCount>;
+  warm(): Promise<void>;
 }

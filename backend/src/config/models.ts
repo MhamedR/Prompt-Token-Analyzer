@@ -1,129 +1,357 @@
-import {
-  PRICING_SOURCE,
-  PRICING_TIER,
-  PRICING_VERIFIED_ON,
-} from '../domain/limits.js';
+import { PRICING_VERIFIED_ON } from '../domain/limits.js';
 
-/**
- * Supported providers. Only OpenAI is wired to a tokenizer today.
- * Add anthropic, google, or meta models after registering a tokenizer for that provider.
- */
-export const MODEL_PROVIDERS = ['openai', 'anthropic', 'google', 'meta'] as const;
+export const MODEL_PROVIDERS = ['openai', 'anthropic', 'google', 'meta', 'mistral', 'deepseek'] as const;
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
 
-export type ModelLifecycle = 'deprecated' | 'shutdown';
+export type ModelLifecycle = 'current' | 'deprecated' | 'shutdown';
 
 export interface ModelDefinition {
   id: string;
   displayName: string;
   provider: ModelProvider;
-  /** Tokenizer encoding name. OpenAI GPT-4o and GPT-4.1 models use o200k_base. */
-  encoding: string;
-  /** USD per 1,000,000 uncached input tokens. Standard tier. */
-  inputPricePerMillionUsd: number;
-  /** USD per 1,000,000 output tokens. Standard tier. */
-  outputPricePerMillionUsd: number;
-  /** Published cached-input rate. Not used in estimates. */
+  providerDisplayName: string;
+  /** Selects the tokenizer implementation inside that provider. Not shared across providers. */
+  tokenizerKey: string;
+  inputPricePerMillionUsd: number | null;
+  outputPricePerMillionUsd: number | null;
   cachedInputPricePerMillionUsd: number | null;
+  priceSource: string;
+  priceVerifiedOn: string;
+  priceNote: string;
   contextWindow: number;
   maxOutputTokens: number;
   lifecycle: ModelLifecycle;
-  /** ISO date from OpenAI's deprecation notice, when one is published. */
   shutdownDate: string | null;
   lifecycleNote: string;
 }
 
+const verifiedOn = PRICING_VERIFIED_ON;
+
+function define(
+  model: Omit<ModelDefinition, 'priceVerifiedOn'> & { priceVerifiedOn?: string },
+): ModelDefinition {
+  return { priceVerifiedOn: verifiedOn, ...model };
+}
+
 /**
- * Pricing and tokenizer settings live only in this file.
- * Rates are OpenAI standard text-token prices, verified 2026-10-31:
- * https://developers.openai.com/api/docs/pricing
- * Lifecycle notes follow https://developers.openai.com/api/docs/deprecations
+ * Prices and tokenizer keys live only in this catalog.
+ * Adding a model that uses an existing tokenizerKey does not require an analysis-service change.
+ * A new provider also needs a TokenizerProvider registered in createTokenizerRegistry.
  */
 export const MODELS: readonly ModelDefinition[] = [
-  {
+  define({
     id: 'gpt-4o',
     displayName: 'GPT-4o',
     provider: 'openai',
-    encoding: 'o200k_base',
+    providerDisplayName: 'OpenAI',
+    tokenizerKey: 'o200k_base',
     inputPricePerMillionUsd: 2.5,
     outputPricePerMillionUsd: 10,
     cachedInputPricePerMillionUsd: 1.25,
+    priceSource: 'https://developers.openai.com/api/docs/pricing',
+    priceNote: 'OpenAI standard uncached text tokens.',
     contextWindow: 128_000,
     maxOutputTokens: 16_384,
     lifecycle: 'deprecated',
     shutdownDate: '2027-01-14',
     lifecycleNote:
-      'Deprecated. OpenAI plans to remove GPT-4o from the API on January 14, 2027. The standard price is still published and is used for this estimate.',
-  },
-  {
+      'Deprecated. OpenAI plans to remove GPT-4o from the API on January 14, 2027. The standard price is still published.',
+  }),
+  define({
     id: 'gpt-4o-mini',
     displayName: 'GPT-4o mini',
     provider: 'openai',
-    encoding: 'o200k_base',
+    providerDisplayName: 'OpenAI',
+    tokenizerKey: 'o200k_base',
     inputPricePerMillionUsd: 0.15,
     outputPricePerMillionUsd: 0.6,
     cachedInputPricePerMillionUsd: 0.075,
+    priceSource: 'https://developers.openai.com/api/docs/pricing',
+    priceNote: 'OpenAI standard uncached text tokens.',
     contextWindow: 128_000,
     maxOutputTokens: 16_384,
     lifecycle: 'deprecated',
     shutdownDate: '2027-01-14',
     lifecycleNote:
-      'Deprecated. OpenAI plans to remove GPT-4o mini from the API on January 14, 2027. The standard price is still published and is used for this estimate.',
-  },
-  {
+      'Deprecated. OpenAI plans to remove GPT-4o mini from the API on January 14, 2027.',
+  }),
+  define({
     id: 'gpt-4.1',
     displayName: 'GPT-4.1',
     provider: 'openai',
-    encoding: 'o200k_base',
+    providerDisplayName: 'OpenAI',
+    tokenizerKey: 'o200k_base',
     inputPricePerMillionUsd: 2,
     outputPricePerMillionUsd: 8,
     cachedInputPricePerMillionUsd: 0.5,
+    priceSource: 'https://developers.openai.com/api/docs/pricing',
+    priceNote: 'OpenAI standard uncached text tokens.',
     contextWindow: 1_047_576,
     maxOutputTokens: 32_768,
     lifecycle: 'deprecated',
     shutdownDate: '2027-01-14',
-    lifecycleNote:
-      'Deprecated. OpenAI plans to remove GPT-4.1 from the API on January 14, 2027. The standard price is still published and is used for this estimate.',
-  },
-  {
+    lifecycleNote: 'Deprecated. OpenAI plans to remove GPT-4.1 from the API on January 14, 2027.',
+  }),
+  define({
     id: 'gpt-4.1-mini',
     displayName: 'GPT-4.1 mini',
     provider: 'openai',
-    encoding: 'o200k_base',
+    providerDisplayName: 'OpenAI',
+    tokenizerKey: 'o200k_base',
     inputPricePerMillionUsd: 0.4,
     outputPricePerMillionUsd: 1.6,
     cachedInputPricePerMillionUsd: 0.1,
+    priceSource: 'https://developers.openai.com/api/docs/pricing',
+    priceNote: 'OpenAI standard uncached text tokens.',
     contextWindow: 1_047_576,
     maxOutputTokens: 32_768,
     lifecycle: 'deprecated',
     shutdownDate: '2027-01-14',
-    lifecycleNote:
-      'Deprecated. OpenAI plans to remove GPT-4.1 mini from the API on January 14, 2027. The standard price is still published and is used for this estimate.',
-  },
-  {
+    lifecycleNote: 'Deprecated. OpenAI plans to remove GPT-4.1 mini from the API on January 14, 2027.',
+  }),
+  define({
     id: 'gpt-4.1-nano',
     displayName: 'GPT-4.1 nano',
     provider: 'openai',
-    encoding: 'o200k_base',
+    providerDisplayName: 'OpenAI',
+    tokenizerKey: 'o200k_base',
     inputPricePerMillionUsd: 0.1,
     outputPricePerMillionUsd: 0.4,
     cachedInputPricePerMillionUsd: 0.025,
+    priceSource: 'https://developers.openai.com/api/docs/pricing',
+    priceNote: 'Last published OpenAI standard rate.',
     contextWindow: 1_047_576,
     maxOutputTokens: 32_768,
     lifecycle: 'shutdown',
     shutdownDate: '2026-10-23',
-    lifecycleNote:
-      'Shut down on October 23, 2026. The last published standard price is kept so older prompts can still be estimated. The API no longer serves this model.',
-  },
+    lifecycleNote: 'Shut down on October 23, 2026. The last published standard price is kept for estimates.',
+  }),
+  define({
+    id: 'claude-sonnet-5-5',
+    displayName: 'Claude Sonnet 5.5',
+    provider: 'anthropic',
+    providerDisplayName: 'Anthropic',
+    tokenizerKey: 'claude-3',
+    inputPricePerMillionUsd: 2,
+    outputPricePerMillionUsd: 10,
+    cachedInputPricePerMillionUsd: 0.1,
+    priceSource: 'https://platform.claude.com/docs/en/about-claude/pricing',
+    priceNote: 'Base input and output tokens. Cache writes are not applied.',
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Current Anthropic model.',
+  }),
+  define({
+    id: 'claude-haiku-4-5',
+    displayName: 'Claude Haiku 4.5',
+    provider: 'anthropic',
+    providerDisplayName: 'Anthropic',
+    tokenizerKey: 'claude-3',
+    inputPricePerMillionUsd: 1,
+    outputPricePerMillionUsd: 5,
+    cachedInputPricePerMillionUsd: 0.1,
+    priceSource: 'https://platform.claude.com/docs/en/about-claude/pricing',
+    priceNote: 'Base input and output tokens. Cache writes are not applied.',
+    contextWindow: 1_000_000,
+    maxOutputTokens: 64_000,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Current Anthropic model.',
+  }),
+  define({
+    id: 'claude-opus-4-6',
+    displayName: 'Claude Opus 4.6',
+    provider: 'anthropic',
+    providerDisplayName: 'Anthropic',
+    tokenizerKey: 'claude-3',
+    inputPricePerMillionUsd: 5,
+    outputPricePerMillionUsd: 25,
+    cachedInputPricePerMillionUsd: 0.5,
+    priceSource: 'https://platform.claude.com/docs/en/about-claude/pricing',
+    priceNote: 'Base input and output tokens. Cache writes are not applied.',
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Current Anthropic model.',
+  }),
+  define({
+    id: 'gemini-3.8-flash',
+    displayName: 'Gemini 3.8 Flash',
+    provider: 'google',
+    providerDisplayName: 'Google',
+    tokenizerKey: 'gemini-1.5',
+    inputPricePerMillionUsd: 0.75,
+    outputPricePerMillionUsd: 3.75,
+    cachedInputPricePerMillionUsd: 0.075,
+    priceSource: 'https://ai.google.dev/gemini-api/docs/pricing',
+    priceNote: 'Paid standard text rate through December 31, 2026. The listed rate rises on January 1, 2027.',
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Introductory paid rate through December 31, 2026.',
+  }),
+  define({
+    id: 'gemini-3.5-flash-lite',
+    displayName: 'Gemini 3.5 Flash-Lite',
+    provider: 'google',
+    providerDisplayName: 'Google',
+    tokenizerKey: 'gemini-1.5',
+    inputPricePerMillionUsd: 0.3,
+    outputPricePerMillionUsd: 2.5,
+    cachedInputPricePerMillionUsd: 0.03,
+    priceSource: 'https://ai.google.dev/gemini-api/docs/pricing',
+    priceNote: 'Paid standard text, image, video, and audio input rate. Output includes thinking tokens.',
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Current Gemini model.',
+  }),
+  define({
+    id: 'gemini-3.1-pro-preview',
+    displayName: 'Gemini 3.1 Pro',
+    provider: 'google',
+    providerDisplayName: 'Google',
+    tokenizerKey: 'gemini-1.5',
+    inputPricePerMillionUsd: 2,
+    outputPricePerMillionUsd: 12,
+    cachedInputPricePerMillionUsd: 0.2,
+    priceSource: 'https://ai.google.dev/gemini-api/docs/pricing',
+    priceNote: 'Paid rate for prompts up to 200,000 tokens. Longer prompts use a higher published rate.',
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Preview model. Short-context price is shown.',
+  }),
+  define({
+    id: 'llama-3.3-70b',
+    displayName: 'Llama 3.3 70B',
+    provider: 'meta',
+    providerDisplayName: 'Meta',
+    tokenizerKey: 'llama-3.1',
+    inputPricePerMillionUsd: null,
+    outputPricePerMillionUsd: null,
+    cachedInputPricePerMillionUsd: null,
+    priceSource: 'https://www.llama.com/',
+    priceNote:
+      'Meta shut down its first-party Llama API in 2026. Hosted prices differ by provider, so this app does not invent one.',
+    contextWindow: 128_000,
+    maxOutputTokens: 4_096,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Open-weight model. Token count only.',
+  }),
+  define({
+    id: 'llama-3.1-8b',
+    displayName: 'Llama 3.1 8B',
+    provider: 'meta',
+    providerDisplayName: 'Meta',
+    tokenizerKey: 'llama-3.1',
+    inputPricePerMillionUsd: null,
+    outputPricePerMillionUsd: null,
+    cachedInputPricePerMillionUsd: null,
+    priceSource: 'https://www.llama.com/',
+    priceNote:
+      'Meta shut down its first-party Llama API in 2026. Hosted prices differ by provider, so this app does not invent one.',
+    contextWindow: 128_000,
+    maxOutputTokens: 4_096,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Open-weight model. Token count only.',
+  }),
+  define({
+    id: 'mistral-small-2603',
+    displayName: 'Mistral Small 4',
+    provider: 'mistral',
+    providerDisplayName: 'Mistral',
+    tokenizerKey: 'mistral-nemo',
+    inputPricePerMillionUsd: 0.15,
+    outputPricePerMillionUsd: 0.6,
+    cachedInputPricePerMillionUsd: 0.015,
+    priceSource: 'https://docs.mistral.ai/inference/pricing',
+    priceNote: 'Standard uncached text rate.',
+    contextWindow: 256_000,
+    maxOutputTokens: 32_768,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Current Mistral model.',
+  }),
+  define({
+    id: 'mistral-medium-3.5',
+    displayName: 'Mistral Medium 3.5',
+    provider: 'mistral',
+    providerDisplayName: 'Mistral',
+    tokenizerKey: 'mistral-nemo',
+    inputPricePerMillionUsd: 1.5,
+    outputPricePerMillionUsd: 7.5,
+    cachedInputPricePerMillionUsd: 0.15,
+    priceSource: 'https://docs.mistral.ai/inference/pricing',
+    priceNote: 'Standard uncached text rate.',
+    contextWindow: 256_000,
+    maxOutputTokens: 32_768,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Current Mistral model.',
+  }),
+  define({
+    id: 'ministral-3-8b',
+    displayName: 'Ministral 3 8B',
+    provider: 'mistral',
+    providerDisplayName: 'Mistral',
+    tokenizerKey: 'mistral-nemo',
+    inputPricePerMillionUsd: 0.15,
+    outputPricePerMillionUsd: 0.15,
+    cachedInputPricePerMillionUsd: 0.015,
+    priceSource: 'https://docs.mistral.ai/inference/pricing',
+    priceNote: 'Standard uncached text rate.',
+    contextWindow: 128_000,
+    maxOutputTokens: 32_768,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Current Mistral model.',
+  }),
+  define({
+    id: 'deepseek-v4-pro',
+    displayName: 'DeepSeek V4 Pro',
+    provider: 'deepseek',
+    providerDisplayName: 'DeepSeek',
+    tokenizerKey: 'deepseek-v4',
+    inputPricePerMillionUsd: 0.66,
+    outputPricePerMillionUsd: 1.98,
+    cachedInputPricePerMillionUsd: 0.022,
+    priceSource: 'https://api-docs.deepseek.com/quick_start/pricing',
+    priceNote: 'Off-peak cache-miss input and off-peak output. Peak hours cost twice as much.',
+    contextWindow: 1_000_000,
+    maxOutputTokens: 384_000,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Current DeepSeek model.',
+  }),
+  define({
+    id: 'deepseek-flash',
+    displayName: 'DeepSeek Flash',
+    provider: 'deepseek',
+    providerDisplayName: 'DeepSeek',
+    tokenizerKey: 'deepseek-v4-flash',
+    inputPricePerMillionUsd: 0.15,
+    outputPricePerMillionUsd: 0.6,
+    cachedInputPricePerMillionUsd: 0.003,
+    priceSource: 'https://api-docs.deepseek.com/quick_start/pricing',
+    priceNote: 'Off-peak cache-miss input and off-peak output for deepseek-flash. Peak hours cost twice as much.',
+    contextWindow: 1_000_000,
+    maxOutputTokens: 384_000,
+    lifecycle: 'current',
+    shutdownDate: null,
+    lifecycleNote: 'Current DeepSeek model. Served as DeepSeek-V4.1-Flash.',
+  }),
 ];
 
 export const PRICING_CATALOG = {
-  source: PRICING_SOURCE,
-  verifiedOn: PRICING_VERIFIED_ON,
-  tier: PRICING_TIER,
-  note: 'Estimates use standard uncached input and output prices in USD. Cached input, batch, regional, and priority rates are not applied. Prices can change.',
+  verifiedOn,
+  note: 'Each model carries its own price source. Estimates use the uncached standard rate in USD and can change. Cached, batch, regional, and peak-hour rates are not applied.',
 } as const;
-
-export function findModel(modelId: string): ModelDefinition | undefined {
-  return MODELS.find((model) => model.id === modelId);
-}

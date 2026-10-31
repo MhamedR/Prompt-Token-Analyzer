@@ -27,7 +27,21 @@ function readOrigins(value: string | undefined): string[] {
   return origins;
 }
 
-export const env = {
+function readOptionalKey(name: string): string | null {
+  const value = process.env[name]?.trim();
+  return value ? value : null;
+}
+
+export interface Env {
+  port: number;
+  corsOrigins: string[];
+  anthropicApiKey: string | null;
+  geminiApiKey: string | null;
+}
+
+export const env: Env = {
   port: readPort(process.env.PORT, 3000),
   corsOrigins: readOrigins(process.env.CORS_ORIGIN),
+  anthropicApiKey: readOptionalKey('ANTHROPIC_API_KEY'),
+  geminiApiKey: readOptionalKey('GEMINI_API_KEY'),
 };

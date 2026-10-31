@@ -6,27 +6,37 @@ import { createApp } from '../src/app.js';
 describe('HTTP API', () => {
   let app: Express;
 
-  beforeAll(() => {
-    app = createApp();
+  beforeAll(async () => {
+    app = await createApp();
   });
 
   it('lists models and their published prices', async () => {
     const response = await request(app).get('/api/models').expect(200);
 
-    expect(response.body.models.map((model: { id: string }) => model.id)).toEqual([
+    const ids = response.body.models.map((model: { id: string }) => model.id);
+    expect(ids).toEqual(expect.arrayContaining([
       'gpt-4o',
-      'gpt-4o-mini',
-      'gpt-4.1',
-      'gpt-4.1-mini',
-      'gpt-4.1-nano',
+      'claude-sonnet-5-5',
+      'gemini-3.8-flash',
+      'llama-3.3-70b',
+      'mistral-small-2603',
+      'deepseek-v4-pro',
+    ]));
+    expect(response.body.providers.map((provider: { id: string }) => provider.id)).toEqual([
+      'openai',
+      'anthropic',
+      'google',
+      'meta',
+      'mistral',
+      'deepseek',
     ]);
     expect(response.body.models[0]).toMatchObject({
       id: 'gpt-4o',
-      encoding: 'o200k_base',
+      tokenizerKey: 'o200k_base',
       inputPricePerMillionUsd: 2.5,
       outputPricePerMillionUsd: 10,
     });
-    expect(response.body.pricing.tier).toContain('standard');
+    expect(response.body.pricing.note).toContain('price source');
   });
 
   it('counts tokens for a prompt', async () => {
@@ -37,10 +47,13 @@ describe('HTTP API', () => {
 
     expect(response.body).toMatchObject({
       model: 'gpt-4o',
+      provider: 'openai',
       wordCount: 3,
       characterCount: 18,
       tokenCount: 6,
-      estimate: true,
+      accuracy: 'exact',
+      countingOnly: true,
+      tokenizerMethod: 'js-tiktoken o200k_base',
     });
   });
 

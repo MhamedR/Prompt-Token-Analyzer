@@ -1,11 +1,12 @@
 import { getEncoding, type Tiktoken } from 'js-tiktoken';
-import { TokenizerError, type TokenizerProvider } from './tokenizer-provider.js';
+import type { ModelDefinition } from '../config/models.js';
+import {
+  TokenizerError,
+  type ProviderStatus,
+  type TokenCount,
+  type TokenizerProvider,
+} from './tokenizer-provider.js';
 
-/**
- * Encodings shipped by js-tiktoken 1.0.x (a pure JavaScript port of OpenAI tiktoken).
- * GPT-4o, GPT-4o mini, and the GPT-4.1 family use o200k_base.
- * cl100k_base remains available for older GPT-4 and GPT-3.5 models.
- */
 const SUPPORTED_ENCODINGS = new Set([
   'o200k_base',
   'cl100k_base',
@@ -15,24 +16,48 @@ const SUPPORTED_ENCODINGS = new Set([
   'gpt2',
 ]);
 
+const NOTE =
+  'Plain text is counted with js-tiktoken, a JavaScript port of OpenAI tiktoken, for the encoding configured on the model. Chat framing, tools, and images are not included. This does not call the OpenAI API.';
+
 export class OpenAiTiktokenProvider implements TokenizerProvider {
   readonly id = 'openai';
+  readonly displayName = 'OpenAI';
+  readonly apiKeyEnv = null;
   private readonly cache = new Map<string, Tiktoken>();
 
-  supportsEncoding(encoding: string): boolean {
-    return SUPPORTED_ENCODINGS.has(encoding);
+  supports(model: ModelDefinition): boolean {
+    return model.provider === this.id && SUPPORTED_ENCODINGS.has(model.tokenizerKey);
   }
 
-  countTokens(encoding: string, text: string): number {
-    const encoder = this.encoderFor(encoding);
-    if (text.length === 0) {
-      return 0;
-    }
+  describe(): ProviderStatus {
+    return {
+      id: this.id,
+      displayName: this.displayName,
+      counting: 'local',
+      apiKeyConfigured: false,
+      apiKeyEnv: null,
+    };
+  }
 
+  async warm(): Promise<void> {
+    this.encoderFor('o200k_base');
+  }
+
+  async countTokens(model: ModelDefinition, text: string): Promise<TokenCount> {
+    const encoder = this.encoderFor(model.tokenizerKey);
+    const tokenCount = text.length === 0 ? 0 : this.encode(encoder, text);
+
+    return {
+      tokenCount,
+      accuracy: 'exact',
+      method: `js-tiktoken ${model.tokenizerKey}`,
+      accuracyNote: NOTE,
+      countingOnly: true,
+    };
+  }
+
+  private encode(encoder: Tiktoken, text: string): number {
     try {
-      // Allow special-token markers so a prompt that mentions them is counted
-      // instead of rejected. They count as those tokens, which is closer to
-      // model input than splitting the marker into ordinary pieces.
       return encoder.encode(text, 'all').length;
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unknown tokenizer error';
@@ -41,7 +66,7 @@ export class OpenAiTiktokenProvider implements TokenizerProvider {
   }
 
   private encoderFor(encoding: string): Tiktoken {
-    if (!this.supportsEncoding(encoding)) {
+    if (!SUPPORTED_ENCODINGS.has(encoding)) {
       throw new TokenizerError(
         `Encoding "${encoding}" is not available for the OpenAI tokenizer.`,
         'UNSUPPORTED_ENCODING',

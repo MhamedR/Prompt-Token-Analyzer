@@ -1,6 +1,6 @@
 # Prompt Token Analyzer
 
-A local web app that estimates how many tokens a prompt will use and what that text may cost on popular OpenAI models. It does not call a model API and does not need an API key.
+A local web app that estimates how many tokens a prompt will use, and what that text may cost, across OpenAI, Anthropic, Google, Meta, Mistral, and DeepSeek. Text analysis works without an API key. A key is optional and is used only for a provider's token-counting endpoint, never to generate a completion.
 
 ## Architecture
 
@@ -13,15 +13,20 @@ Browser (Angular)
   │  POST /api/tokens/analyze
   ▼
 Express API
-  ├─ Model catalog          prices, encoding, lifecycle
+  ├─ Model catalog          prices and tokenizer keys, one entry per model
   ├─ Analysis service       section totals and USD estimate
-  └─ Tokenizer registry     one provider per model family
-        └─ OpenAI           js-tiktoken (o200k_base / cl100k_base / …)
+  └─ Tokenizer registry     one TokenizerProvider per family
+        ├─ OpenAI           js-tiktoken
+        ├─ Anthropic        local Claude 3 tokenizer, or count_tokens when a key is set
+        ├─ Google           local Gemini 1.5 tokenizer, or countTokens when a key is set
+        ├─ Meta             Llama 3.1 tokenizer
+        ├─ Mistral          Mistral Nemo tokenizer
+        └─ DeepSeek         DeepSeek-V4 tokenizer
 ```
 
-Adding Anthropic, Google, or Meta later means two steps: implement a `TokenizerProvider`, then append models to the catalog. The HTTP API and the dashboard already treat the catalog as data.
+A new model that reuses a tokenizer key is a catalog row. A new provider is a class registered in `createTokenizerRegistry`. The analysis service does not import provider implementations.
 
-Counts are estimates of plain text. They are not the number of tokens an API invoice will show. Chat framing, tools, images, and audio are outside this count. The dashboard says so, and every token response includes the same limitations.
+Each result names the provider, model, tokenizer method, and accuracy: exact, approximate, or API-reported. Counts are not an invoice. Chat framing, tools, images, and audio are outside the local count.
 
 ## Folder structure
 
@@ -36,7 +41,7 @@ prompt-token-analyzer/
 │   ├── src/
 │   │   ├── config/           environment and the model catalog
 │   │   ├── domain/           word/character counts and the cost formula
-│   │   ├── tokenizers/       provider interface and js-tiktoken
+│   │   ├── tokenizers/       TokenizerProvider implementations
 │   │   ├── services/         count and analyze
 │   │   ├── http/             validation and error responses
 │   │   └── routes/           /api/models and /api/tokens
@@ -45,11 +50,22 @@ prompt-token-analyzer/
 └── README.md
 ```
 
-## Tokenizer
+## Tokenizers
 
-OpenAI’s GPT-4o and GPT-4.1 models use the `o200k_base` encoding. This API counts with [`js-tiktoken`](https://github.com/dqbd/tiktoken/tree/main/js) 1.0.x, a pure JavaScript port of OpenAI’s [tiktoken](https://github.com/openai/tiktoken) byte-pair encoder. It is not a character-to-token ratio.
+Providers do not share a tokenizer. None of these counts is a character ratio.
 
-`js-tiktoken` maps `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`, `gpt-4.1-mini`, and `gpt-4.1-nano` to `o200k_base`. The catalog sets that encoding explicitly, and a unit test checks that the library agrees. `cl100k_base` is available for older GPT-4 and GPT-3.5 models, but those models are not in the dropdown.
+| Provider | Local method | Accuracy without a key | Optional count API |
+| --- | --- | --- | --- |
+| OpenAI | js-tiktoken `o200k_base` | Exact for that encoding | None. No key is used. |
+| Anthropic | Claude 3 vocabulary | Approximate for Claude 4 and later | `POST /v1/messages/count_tokens` with `ANTHROPIC_API_KEY` |
+| Google | Gemini 1.5 / Gemma 2 vocabulary | Approximate for current Gemini models | `countTokens` with `GEMINI_API_KEY` |
+| Meta | Llama 3.1 vocabulary | Exact for Llama 3.1 and 3.3 plain text | None. Meta has no first-party price. |
+| Mistral | Mistral Nemo vocabulary | Approximate for current Mistral models | None. |
+| DeepSeek | DeepSeek-V4 vocabulary | Exact for V4 Pro. Approximate for V4.1 Flash. | None. |
+
+OpenAI’s GPT-4o and GPT-4.1 models use [`js-tiktoken`](https://github.com/dqbd/tiktoken/tree/main/js) 1.0.x. The catalog sets `o200k_base` explicitly, and a unit test checks that the library agrees. The other local tokenizers come from the `@lenml/tokenizer-*` packages and encode text with special tokens turned off.
+
+Anthropic's count endpoint and Gemini's `countTokens` endpoint only count tokens. They are not message or `generateContent` calls. If a key is set and the endpoint fails, the API falls back to the local tokenizer and labels that result approximate. Keys stay in the backend environment and are not returned by `GET /api/models`.
 
 Compatibility limits:
 
@@ -63,7 +79,7 @@ An unknown model returns `400` with code `UNSUPPORTED_MODEL`. A provider with no
 
 ## Models and pricing
 
-Prices live only in `backend/src/config/models.ts`. They are OpenAI **standard** uncached text-token rates, in USD per 1,000,000 tokens, checked against the [pricing page](https://developers.openai.com/api/docs/pricing) on **2026-10-31**. Cached-input, batch, regional, and priority/fast rates are not applied.
+Prices live only in `backend/src/config/models.ts`. Each model has its own source. Rates below are uncached standard USD per 1,000,000 tokens, checked on **2026-10-31**. Cached, batch, regional, and peak-hour rates are not applied.
 
 | Model | API id | Encoding | Input / 1M | Output / 1M | Lifecycle |
 | --- | --- | --- | --- | --- | --- |
@@ -72,8 +88,21 @@ Prices live only in `backend/src/config/models.ts`. They are OpenAI **standard**
 | GPT-4.1 | `gpt-4.1` | `o200k_base` | $2.00 | $8.00 | Deprecated, shutdown 2027-01-14 |
 | GPT-4.1 mini | `gpt-4.1-mini` | `o200k_base` | $0.40 | $1.60 | Deprecated, shutdown 2027-01-14 |
 | GPT-4.1 nano | `gpt-4.1-nano` | `o200k_base` | $0.10 | $0.40 | Shut down 2026-10-23 |
+| Claude Sonnet 5.5 | `claude-sonnet-5-5` | Claude 3 local | $2.00 | $10.00 | Current |
+| Claude Haiku 4.5 | `claude-haiku-4-5` | Claude 3 local | $1.00 | $5.00 | Current |
+| Claude Opus 4.6 | `claude-opus-4-6` | Claude 3 local | $5.00 | $25.00 | Current |
+| Gemini 3.8 Flash | `gemini-3.8-flash` | Gemini 1.5 local | $0.75 | $3.75 | Intro rate through 2026-12-31 |
+| Gemini 3.5 Flash-Lite | `gemini-3.5-flash-lite` | Gemini 1.5 local | $0.30 | $2.50 | Current |
+| Gemini 3.1 Pro | `gemini-3.1-pro-preview` | Gemini 1.5 local | $2.00 | $12.00 | Short-context rate |
+| Llama 3.3 70B | `llama-3.3-70b` | Llama 3.1 | — | — | No first-party price |
+| Llama 3.1 8B | `llama-3.1-8b` | Llama 3.1 | — | — | No first-party price |
+| Mistral Small 4 | `mistral-small-2603` | Mistral Nemo | $0.15 | $0.60 | Current |
+| Mistral Medium 3.5 | `mistral-medium-3.5` | Mistral Nemo | $1.50 | $7.50 | Current |
+| Ministral 3 8B | `ministral-3-8b` | Mistral Nemo | $0.15 | $0.15 | Current |
+| DeepSeek V4 Pro | `deepseek-v4-pro` | DeepSeek-V4 | $0.66 | $1.98 | Off-peak cache miss |
+| DeepSeek Flash | `deepseek-flash` | DeepSeek-V4 | $0.15 | $0.60 | Off-peak cache miss |
 
-Lifecycle follows the [deprecations page](https://developers.openai.com/api/docs/deprecations). Shut-down models stay in the list so older prompts can still be estimated. The published price can change; the verified date is shown in the UI.
+OpenAI lifecycle follows the [deprecations page](https://developers.openai.com/api/docs/deprecations). Claude prices follow the [Claude pricing page](https://platform.claude.com/docs/en/about-claude/pricing). Gemini prices follow the [Gemini pricing page](https://ai.google.dev/gemini-api/docs/pricing). Mistral prices follow the [Mistral pricing page](https://docs.mistral.ai/inference/pricing). DeepSeek prices follow the [DeepSeek pricing page](https://api-docs.deepseek.com/quick_start/pricing) and use the off-peak cache-miss rate; peak hours cost twice as much. Meta does not publish a first-party token price. The verified date is shown in the UI.
 
 ```
 Input cost  = (input tokens  / 1,000,000) × input price per million
@@ -88,7 +117,7 @@ Context windows shown in the UI are the published text windows: 128,000 for GPT-
 - Node.js 22.12+ or 24.15+ (Angular 22). This project was built with Node 24.
 - npm 11
 
-No database and no OpenAI key.
+No database. `ANTHROPIC_API_KEY` and `GEMINI_API_KEY` are optional. See `backend/.env.example`.
 
 ## Run locally
 
@@ -127,6 +156,8 @@ From the repository root, `npm test` runs both suites, `npm run start:backend` s
 ```
 PORT=3000
 CORS_ORIGIN=http://localhost:4200,http://127.0.0.1:4200
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
 ```
 
 The frontend development API URL is `http://localhost:3000/api` in `frontend/src/environments/environment.ts`. A production build replaces it with `/api` so the API can be hosted on the same origin.
@@ -146,15 +177,19 @@ Returns the catalog, pricing source, field limits, and estimate limitations.
 ```json
 {
   "model": "gpt-4o",
-  "encoding": "o200k_base",
+  "provider": "openai",
+  "providerDisplayName": "OpenAI",
+  "modelDisplayName": "GPT-4o",
+  "tokenizerMethod": "js-tiktoken o200k_base",
+  "accuracy": "exact",
+  "countingOnly": true,
   "wordCount": 5,
   "characterCount": 41,
-  "tokenCount": 5,
-  "estimate": true
+  "tokenCount": 5
 }
 ```
 
-`tokenCount` is the `o200k_base` count for that string. Word and character counts are exact for the text; the token count is still an estimate of billed usage.
+`accuracy` is `exact`, `approximate`, or `api-reported`. `countingOnly` is always true: the request did not generate a completion. Word and character counts describe the text. An exact token count still omits chat framing, so it is not an invoice.
 
 `POST /api/tokens/analyze`
 
@@ -195,8 +230,8 @@ Backend tests cover word and character counts, the cost formula, `o200k_base` pa
 
 ## Extending the catalog
 
-1. Add a tokenizer class that implements `TokenizerProvider` in `backend/src/tokenizers/`.
-2. Register it in `createApp` (`backend/src/app.ts`).
-3. Append a model in `backend/src/config/models.ts` with `provider`, `encoding`, and prices.
+1. Add a class that implements `TokenizerProvider` in `backend/src/tokenizers/`.
+2. Register it in `createTokenizerRegistry`.
+3. Append a model in `backend/src/config/models.ts` with `provider`, `tokenizerKey`, and prices.
 
-The dashboard reads `GET /api/models`, so a new OpenAI model that still uses `o200k_base` only needs a catalog entry. Prompt history, comparison, CSV export, and live API usage are not in this version; the split between catalog, tokenizer, and analysis service is where those features would attach.
+A model that reuses an existing `tokenizerKey` only needs the catalog entry. The dashboard reads `GET /api/models` and filters models by the selected provider. Prompt history, comparison, and CSV export are not in this version.

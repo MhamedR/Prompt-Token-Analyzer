@@ -1,16 +1,16 @@
 import cors from 'cors';
 import express from 'express';
 import { env } from './config/env.js';
+import { ModelCatalog } from './config/model-catalog.js';
 import { errorHandler, notFoundHandler } from './http/error-handler.js';
 import { createModelsRouter } from './routes/models.route.js';
 import { createTokensRouter } from './routes/tokens.route.js';
 import { AnalysisService } from './services/analysis-service.js';
-import { OpenAiTiktokenProvider } from './tokenizers/openai-tiktoken-provider.js';
-import { TokenizerRegistry } from './tokenizers/tokenizer-registry.js';
+import { createTokenizerRegistry } from './tokenizers/create-registry.js';
 
-export function createApp(): express.Express {
-  const analysis = new AnalysisService(new TokenizerRegistry([new OpenAiTiktokenProvider()]));
-  analysis.warmTokenizers();
+export async function createApp(): Promise<express.Express> {
+  const analysis = new AnalysisService(new ModelCatalog(), createTokenizerRegistry(env));
+  await analysis.warmTokenizers();
 
   const app = express();
   app.disable('x-powered-by');

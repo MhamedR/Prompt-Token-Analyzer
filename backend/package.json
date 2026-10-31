@@ -15,6 +15,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@lenml/tokenizer-claude": "^3.7.2",
+    "@lenml/tokenizer-deepseek_v4": "^3.7.2",
+    "@lenml/tokenizer-gemini": "^3.7.2",
+    "@lenml/tokenizer-llama3_1": "^3.7.2",
+    "@lenml/tokenizer-mistral_nemo": "^3.7.2",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",

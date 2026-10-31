@@ -240,12 +240,49 @@ textarea:focus,
   font-size: 0.82rem;
 }
 
+.selectors {
+  display: flex;
+  gap: 0.75rem;
+  width: min(100%, 36rem);
+}
+
 .model-select {
-  width: min(100%, 26rem);
+  width: min(100%, 36rem);
 }
 
 .model-field {
-  width: 100%;
+  flex: 1;
+  width: auto;
+}
+
+.count-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  align-items: center;
+  margin-top: 0.85rem;
+}
+
+.accuracy {
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.accuracy-exact {
+  background: rgba(126, 224, 198, 0.16);
+  color: var(--accent);
+}
+
+.accuracy-approximate {
+  background: rgba(240, 194, 122, 0.16);
+  color: var(--amber);
+}
+
+.accuracy-api-reported {
+  background: rgba(140, 190, 255, 0.16);
+  color: #b9d4ff;
 }
 
 .model-meta,
@@ -470,9 +507,14 @@ tfoot td {
   }
 
   .model-select,
+  .selectors,
   .button-row {
     width: 100%;
     margin-top: 0.9rem;
+  }
+
+  .selectors {
+    flex-direction: column;
   }
 
   .button-row {

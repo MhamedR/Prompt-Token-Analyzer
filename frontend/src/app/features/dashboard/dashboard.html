@@ -14,9 +14,12 @@
       </div>
     </div>
     <app-model-select
-      [models]="models()"
+      [providers]="providers()"
+      [providerId]="selectedProviderId()"
+      [models]="modelsForProvider()"
       [modelId]="selectedModelId()"
       [disabled]="modelsLoading()"
+      (providerIdChange)="selectProvider($event)"
       (modelIdChange)="selectModel($event)"
     />
   </header>
@@ -44,6 +47,13 @@
         <h2>Full request</h2>
         <p>Counts include system instructions, the user prompt, and additional context.</p>
       </div>
+      @if (analysis(); as result) {
+        <p class="count-meta">
+          <span class="accuracy" [class]="'accuracy-' + result.accuracy">{{ accuracyLabel(result.accuracy) }}</span>
+          <span>{{ result.providerDisplayName }} · {{ result.modelDisplayName }} · {{ result.tokenizerMethod }}</span>
+        </p>
+        <p class="model-note">{{ result.accuracyNote }}</p>
+      }
       @if (analysisError(); as message) {
         <p class="inline-error" role="alert">{{ message }}</p>
       }
@@ -57,7 +67,7 @@
         <app-stat-card
           label="Input tokens"
           [value]="formatCount(analysis()?.totalInputTokens)"
-          hint="Estimated plain text"
+          [hint]="accuracyLabel(analysis()?.accuracy)"
         />
         <app-stat-card
           label="Output tokens"
@@ -75,9 +85,9 @@
       <app-cost-estimator
         [analysis]="analysis()"
         [model]="selectedModel()"
-        [verifiedOn]="pricing()?.verifiedOn ?? null"
-        [pricingNote]="pricing()?.note ?? ''"
-        [source]="pricing()?.source ?? ''"
+        [verifiedOn]="analysis()?.pricing.verifiedOn ?? pricing()?.verifiedOn ?? null"
+        [pricingNote]="analysis()?.pricing.note ?? pricing()?.note ?? ''"
+        [source]="analysis()?.pricing.source ?? selectedModel()?.priceSource ?? ''"
         [maxOutputTokens]="maxOutputTokens()"
         [loading]="analysisLoading()"
         (outputTokensChange)="expectedOutputTokens.set($event)"

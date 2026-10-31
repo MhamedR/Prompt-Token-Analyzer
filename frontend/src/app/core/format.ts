@@ -6,7 +6,11 @@ export function formatCount(value: number | null | undefined): string {
   return new Intl.NumberFormat('en-US').format(value);
 }
 
-export function formatPricePerMillion(value: number): string {
+export function formatPricePerMillion(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return '—';
+  }
+
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',

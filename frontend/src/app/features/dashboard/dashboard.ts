@@ -19,6 +19,8 @@ import type {
   ModelDefinition,
   ModelsResponse,
   PricingCatalog,
+  ProviderStatus,
+  TokenAccuracy,
   TokenCountResponse,
 } from '../../core/models/analyzer.models';
 import { AnalyzerApiService } from '../../core/services/analyzer-api.service';
@@ -52,6 +54,7 @@ export class Dashboard {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly models = signal<ModelDefinition[]>([]);
+  readonly providers = signal<ProviderStatus[]>([]);
   readonly pricing = signal<PricingCatalog | null>(null);
   readonly limitations = signal<string[]>([]);
   readonly modelsLoading = signal(true);
@@ -59,6 +62,7 @@ export class Dashboard {
   readonly maxCharacters = signal(400_000);
   readonly maxOutputTokens = signal(2_000_000);
 
+  readonly selectedProviderId = signal('openai');
   readonly selectedModelId = signal('gpt-4o');
   readonly userPrompt = signal('');
   readonly systemPrompt = signal('');
@@ -73,6 +77,9 @@ export class Dashboard {
   readonly analysisLoading = signal(false);
   readonly analysisError = signal<string | null>(null);
 
+  readonly modelsForProvider = computed(() =>
+    this.models().filter((model) => model.provider === this.selectedProviderId()),
+  );
   readonly selectedModel = computed(
     () => this.models().find((model) => model.id === this.selectedModelId()) ?? null,
   );
@@ -177,21 +184,48 @@ export class Dashboard {
       });
   }
 
+  protected selectProvider(providerId: string): void {
+    this.selectedProviderId.set(providerId);
+    const current = this.models().find((model) => model.id === this.selectedModelId());
+    if (current?.provider === providerId) {
+      return;
+    }
+
+    const first = this.models().find((model) => model.provider === providerId);
+    if (first) {
+      this.selectedModelId.set(first.id);
+    }
+  }
+
   protected selectModel(modelId: string): void {
     this.selectedModelId.set(modelId);
   }
 
+  protected accuracyLabel(accuracy: TokenAccuracy | undefined): string {
+    if (accuracy === 'exact') {
+      return 'Exact';
+    }
+    if (accuracy === 'api-reported') {
+      return 'API-reported';
+    }
+    if (accuracy === 'approximate') {
+      return 'Approximate';
+    }
+    return 'Waiting';
+  }
+
   private applyModels(response: ModelsResponse): void {
     this.models.set(response.models);
+    this.providers.set(response.providers);
     this.pricing.set(response.pricing);
     this.limitations.set(response.limitations);
     this.maxCharacters.set(response.limits.maxCharactersPerField);
     this.maxOutputTokens.set(response.limits.maxExpectedOutputTokens);
-    if (
-      response.models.length > 0 &&
-      !response.models.some((model) => model.id === this.selectedModelId())
-    ) {
-      this.selectedModelId.set(response.models[0].id);
+    const selected =
+      response.models.find((model) => model.id === this.selectedModelId()) ?? response.models[0];
+    if (selected) {
+      this.selectedModelId.set(selected.id);
+      this.selectedProviderId.set(selected.provider);
     }
     this.modelsLoading.set(false);
   }

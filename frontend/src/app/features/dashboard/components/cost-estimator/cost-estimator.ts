@@ -30,6 +30,9 @@ export class CostEstimator {
     const outputPrice =
       this.analysis()?.pricing.outputPricePerMillionUsd ?? this.model()?.outputPricePerMillionUsd;
     const price = side === 'input' ? inputPrice : outputPrice;
+    if (price === null) {
+      return 'No first-party price';
+    }
     if (price === undefined) {
       return side === 'input' ? 'Uncached input tokens' : 'Output tokens';
     }

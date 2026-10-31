@@ -1,14 +1,19 @@
-export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'meta';
-export type ModelLifecycle = 'deprecated' | 'shutdown';
+export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'meta' | 'mistral' | 'deepseek';
+export type ModelLifecycle = 'current' | 'deprecated' | 'shutdown';
+export type TokenAccuracy = 'exact' | 'approximate' | 'api-reported';
 
 export interface ModelDefinition {
   id: string;
   displayName: string;
   provider: ModelProvider;
-  encoding: string;
-  inputPricePerMillionUsd: number;
-  outputPricePerMillionUsd: number;
+  providerDisplayName: string;
+  tokenizerKey: string;
+  inputPricePerMillionUsd: number | null;
+  outputPricePerMillionUsd: number | null;
   cachedInputPricePerMillionUsd: number | null;
+  priceSource: string;
+  priceVerifiedOn: string;
+  priceNote: string;
   contextWindow: number;
   maxOutputTokens: number;
   lifecycle: ModelLifecycle;
@@ -16,10 +21,16 @@ export interface ModelDefinition {
   lifecycleNote: string;
 }
 
+export interface ProviderStatus {
+  id: string;
+  displayName: string;
+  counting: 'local' | 'count-api';
+  apiKeyConfigured: boolean;
+  apiKeyEnv: string | null;
+}
+
 export interface PricingCatalog {
-  source: string;
   verifiedOn: string;
-  tier: string;
   note: string;
 }
 
@@ -30,18 +41,27 @@ export interface ApiLimits {
 
 export interface ModelsResponse {
   models: ModelDefinition[];
+  providers: ProviderStatus[];
   pricing: PricingCatalog;
   limits: ApiLimits;
   limitations: string[];
 }
 
-export interface TokenCountResponse {
+export interface TokenMetadata {
+  providerDisplayName: string;
+  modelDisplayName: string;
+  tokenizerMethod: string;
+  accuracy: TokenAccuracy;
+  accuracyNote: string;
+  countingOnly: true;
+}
+
+export interface TokenCountResponse extends TokenMetadata {
   model: string;
-  encoding: string;
+  provider: ModelProvider;
   wordCount: number;
   characterCount: number;
   tokenCount: number;
-  estimate: true;
   limitations: string[];
 }
 
@@ -59,9 +79,8 @@ export interface AnalyzeRequest {
   expectedOutputTokens: number;
 }
 
-export interface AnalyzeResponse {
+export interface AnalyzeResponse extends TokenMetadata {
   model: string;
-  encoding: string;
   provider: ModelProvider;
   systemPromptTokens: number;
   userPromptTokens: number;
@@ -76,19 +95,17 @@ export interface AnalyzeResponse {
     userPrompt: TextStats;
     context: TextStats;
   };
-  estimatedInputCostUsd: number;
-  estimatedOutputCostUsd: number;
-  totalEstimatedCostUsd: number;
+  estimatedInputCostUsd: number | null;
+  estimatedOutputCostUsd: number | null;
+  totalEstimatedCostUsd: number | null;
   currency: 'USD';
   pricing: {
-    inputPricePerMillionUsd: number;
-    outputPricePerMillionUsd: number;
+    inputPricePerMillionUsd: number | null;
+    outputPricePerMillionUsd: number | null;
     cachedInputPricePerMillionUsd: number | null;
-    tier: string;
     source: string;
     verifiedOn: string;
     note: string;
   };
-  estimate: true;
   limitations: string[];
 }

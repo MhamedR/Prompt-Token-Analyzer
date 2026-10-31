@@ -1,4 +1,17 @@
-<div class="model-select">
+<div class="selectors">
+  <mat-form-field appearance="outline" class="model-field" subscriptSizing="dynamic">
+    <mat-label>Provider</mat-label>
+    <mat-select
+      [value]="providerId()"
+      [disabled]="disabled() || providers().length === 0"
+      (selectionChange)="chooseProvider($event.value)"
+    >
+      @for (provider of providers(); track provider.id) {
+        <mat-option [value]="provider.id">{{ provider.displayName }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+
   <mat-form-field appearance="outline" class="model-field" subscriptSizing="dynamic">
     <mat-label>Model</mat-label>
     <mat-select
@@ -12,16 +25,36 @@
       }
     </mat-select>
   </mat-form-field>
+</div>
 
-  @if (selected(); as model) {
-    <p class="model-meta">
+@if (selected(); as model) {
+  <p class="model-meta">
+    @if (model.lifecycle === 'deprecated' || model.lifecycle === 'shutdown') {
       <span class="status" [class.status-shutdown]="model.lifecycle === 'shutdown'">
         {{ statusLabel(model) }}
       </span>
-      {{ model.encoding }} · {{ formatPricePerMillion(model.inputPricePerMillionUsd) }} input /
+    }
+    @if (model.inputPricePerMillionUsd !== null && model.outputPricePerMillionUsd !== null) {
+      {{ formatPricePerMillion(model.inputPricePerMillionUsd) }} input /
       {{ formatPricePerMillion(model.outputPricePerMillionUsd) }} output per 1M ·
-      {{ formatCount(model.contextWindow) }} context
+    } @else {
+      No first-party token price ·
+    }
+    {{ formatCount(model.contextWindow) }} context
+  </p>
+  <p class="model-note">{{ model.priceNote }}</p>
+  @if (selectedProvider(); as provider) {
+    <p class="model-note">
+      @if (provider.counting === 'count-api') {
+        Token counts use {{ provider.displayName }}'s counting endpoint. No completion is generated.
+      } @else if (provider.apiKeyEnv) {
+        Local approximation. Set {{ provider.apiKeyEnv }} to use the official counting endpoint.
+      } @else {
+        Local tokenizer. No API key and no completion call.
+      }
     </p>
+  }
+  @if (model.lifecycle !== 'current') {
     <p class="model-note">{{ model.lifecycleNote }}</p>
   }
-</div>
+}

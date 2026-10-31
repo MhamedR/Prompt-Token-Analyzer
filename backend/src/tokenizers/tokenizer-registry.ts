@@ -1,22 +1,50 @@
-import { TokenizerError, type TokenizerProvider } from './tokenizer-provider.js';
+import type { ModelDefinition } from '../config/models.js';
+import { TokenizerError, type ProviderStatus, type TokenCount, type TokenizerProvider } from './tokenizer-provider.js';
 
 export class TokenizerRegistry {
   constructor(private readonly providers: readonly TokenizerProvider[]) {}
 
-  supports(providerId: string, encoding: string): boolean {
-    const provider = this.providers.find((item) => item.id === providerId);
-    return provider?.supportsEncoding(encoding) ?? false;
+  describe(): ProviderStatus[] {
+    return this.providers.map((provider) => provider.describe());
   }
 
-  countTokens(providerId: string, encoding: string, text: string): number {
-    const provider = this.providers.find((item) => item.id === providerId);
+  supports(model: ModelDefinition): boolean {
+    return this.providerFor(model.provider)?.supports(model) ?? false;
+  }
+
+  async countTokens(model: ModelDefinition, text: string): Promise<TokenCount> {
+    const provider = this.providerFor(model.provider);
     if (!provider) {
       throw new TokenizerError(
-        `No tokenizer is registered for provider "${providerId}". Add a TokenizerProvider before enabling models from that provider.`,
+        `No tokenizer is registered for provider "${model.provider}". Add a TokenizerProvider before enabling models from that provider.`,
         'UNSUPPORTED_PROVIDER',
       );
     }
 
-    return provider.countTokens(encoding, text);
+    if (!provider.supports(model)) {
+      throw new TokenizerError(
+        `Tokenizer "${model.tokenizerKey}" is not available for provider "${model.provider}".`,
+        'UNSUPPORTED_ENCODING',
+      );
+    }
+
+    return provider.countTokens(model, text);
+  }
+
+  async warm(models: readonly ModelDefinition[]): Promise<void> {
+    for (const model of models) {
+      if (!this.supports(model)) {
+        throw new TokenizerError(
+          `Model "${model.id}" has no registered tokenizer.`,
+          'UNSUPPORTED_ENCODING',
+        );
+      }
+    }
+
+    await Promise.all(this.providers.map((provider) => provider.warm()));
+  }
+
+  private providerFor(providerId: string): TokenizerProvider | undefined {
+    return this.providers.find((provider) => provider.id === providerId);
   }
 }
