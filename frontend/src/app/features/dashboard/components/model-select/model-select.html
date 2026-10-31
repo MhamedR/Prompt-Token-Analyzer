@@ -1,0 +1,27 @@
+<div class="model-select">
+  <mat-form-field appearance="outline" class="model-field" subscriptSizing="dynamic">
+    <mat-label>Model</mat-label>
+    <mat-select
+      [value]="modelId()"
+      [disabled]="disabled() || models().length === 0"
+      (selectionChange)="choose($event.value)"
+      panelClass="model-panel"
+    >
+      @for (model of models(); track model.id) {
+        <mat-option [value]="model.id">{{ model.displayName }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+
+  @if (selected(); as model) {
+    <p class="model-meta">
+      <span class="status" [class.status-shutdown]="model.lifecycle === 'shutdown'">
+        {{ statusLabel(model) }}
+      </span>
+      {{ model.encoding }} · {{ formatPricePerMillion(model.inputPricePerMillionUsd) }} input /
+      {{ formatPricePerMillion(model.outputPricePerMillionUsd) }} output per 1M ·
+      {{ formatCount(model.contextWindow) }} context
+    </p>
+    <p class="model-note">{{ model.lifecycleNote }}</p>
+  }
+</div>

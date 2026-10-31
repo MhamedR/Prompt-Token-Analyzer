@@ -1,0 +1,42 @@
+<section class="panel editor-panel">
+  <div class="panel-head">
+    <div>
+      <h2>User prompt</h2>
+      <p>Paste or type the prompt. Token count updates shortly after you stop typing.</p>
+    </div>
+    <div class="button-row">
+      <button matButton="outlined" type="button" (click)="clear()">Clear</button>
+      <button matButton="outlined" type="button" (click)="copy()">
+        {{ copied() ? 'Copied' : 'Copy' }}
+      </button>
+    </div>
+  </div>
+
+  <label class="sr-only" for="user-prompt">User prompt</label>
+  <textarea
+    #area
+    id="user-prompt"
+    rows="14"
+    placeholder="Paste or type a prompt to estimate tokens and cost."
+    [attr.maxlength]="maxLength()"
+    (input)="onInput($event)"
+  ></textarea>
+
+  <p class="editor-metrics" aria-live="polite">
+    <span><strong>{{ formatCount(characterCount()) }}</strong> characters</span>
+    <span><strong>{{ formatCount(wordCount()) }}</strong> words</span>
+    <span>
+      <strong>{{ formatCount(tokenCount()) }}</strong> user-prompt tokens
+      @if (loading()) {
+        <em>Updating…</em>
+      }
+    </span>
+  </p>
+
+  @if (error(); as message) {
+    <p class="inline-error" role="alert">{{ message }}</p>
+  }
+  @if (copyError(); as message) {
+    <p class="inline-error" role="alert">{{ message }}</p>
+  }
+</section>

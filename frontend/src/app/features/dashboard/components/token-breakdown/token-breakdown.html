@@ -1,0 +1,55 @@
+<div class="table-wrap">
+  <table>
+    <caption>
+      Token breakdown by prompt section. Each section is tokenized separately, then added.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Section</th>
+        <th scope="col">Words</th>
+        <th scope="col">Characters</th>
+        <th scope="col">Tokens</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th scope="row">System instructions</th>
+        <td>{{ formatCount(analysis()?.sections?.systemPrompt?.wordCount) }}</td>
+        <td>{{ formatCount(analysis()?.sections?.systemPrompt?.characterCount) }}</td>
+        <td>{{ formatCount(analysis()?.systemPromptTokens) }}</td>
+      </tr>
+      <tr>
+        <th scope="row">User prompt</th>
+        <td>{{ formatCount(analysis()?.sections?.userPrompt?.wordCount) }}</td>
+        <td>{{ formatCount(analysis()?.sections?.userPrompt?.characterCount) }}</td>
+        <td>{{ formatCount(analysis()?.userPromptTokens) }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Additional context</th>
+        <td>{{ formatCount(analysis()?.sections?.context?.wordCount) }}</td>
+        <td>{{ formatCount(analysis()?.sections?.context?.characterCount) }}</td>
+        <td>{{ formatCount(analysis()?.contextTokens) }}</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr>
+        <th scope="row">Combined input</th>
+        <td>{{ formatCount(analysis()?.wordCount) }}</td>
+        <td>{{ formatCount(analysis()?.characterCount) }}</td>
+        <td>{{ formatCount(analysis()?.totalInputTokens) }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Expected output</th>
+        <td>—</td>
+        <td>—</td>
+        <td>{{ formatCount(analysis()?.expectedOutputTokens) }}</td>
+      </tr>
+      <tr>
+        <th scope="row">Estimated total</th>
+        <td>—</td>
+        <td>—</td>
+        <td>{{ formatCount(analysis()?.totalTokens) }}</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>

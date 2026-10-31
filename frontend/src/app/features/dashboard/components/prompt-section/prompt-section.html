@@ -1,0 +1,16 @@
+<div class="section-field">
+  <div class="section-label-row">
+    <label [attr.for]="inputId()">{{ label() }}</label>
+    <span class="token-pill">{{ formatCount(tokenCount()) }} tokens</span>
+  </div>
+  @if (hint()) {
+    <p class="field-hint">{{ hint() }}</p>
+  }
+  <textarea
+    [id]="inputId()"
+    [rows]="rows()"
+    [placeholder]="placeholder()"
+    [attr.maxlength]="maxLength()"
+    (input)="onInput($event)"
+  ></textarea>
+</div>

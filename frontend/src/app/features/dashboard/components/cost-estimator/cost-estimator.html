@@ -1,0 +1,59 @@
+<section class="cost-block">
+  <div class="output-field">
+    <label for="output-tokens">Expected output tokens</label>
+    <input
+      id="output-tokens"
+      type="number"
+      inputmode="numeric"
+      min="0"
+      step="1"
+      [max]="maxOutputTokens()"
+      value="500"
+      (input)="onOutputInput($event)"
+    />
+    <p class="field-hint">Used only for the cost estimate. This app does not generate a completion.</p>
+    @if (invalidMessage(); as message) {
+      <p class="inline-error" role="alert">{{ message }}</p>
+    }
+  </div>
+
+  <div class="cost-grid">
+    <app-stat-card
+      label="Input cost"
+      [value]="formatUsd(analysis()?.estimatedInputCostUsd)"
+      [hint]="priceHint('input')"
+    />
+    <app-stat-card
+      label="Output cost"
+      [value]="formatUsd(analysis()?.estimatedOutputCostUsd)"
+      [hint]="priceHint('output')"
+    />
+    <app-stat-card
+      label="Total estimated cost"
+      [value]="formatUsd(analysis()?.totalEstimatedCostUsd)"
+      hint="Input cost + output cost, USD"
+      [emphasis]="true"
+    />
+  </div>
+
+  <p class="price-note">
+    Prices are estimates and can change.
+    @if (verifiedOn()) {
+      Standard rates were checked on {{ verifiedOn() }}.
+    }
+    @if (loading()) {
+      Updating…
+    }
+  </p>
+  @if (pricingNote()) {
+    <p class="price-note">{{ pricingNote() }}</p>
+  }
+  @if (source()) {
+    <p class="price-note">
+      <a [href]="source()" target="_blank" rel="noopener noreferrer">Pricing source</a>
+    </p>
+  }
+  @if (cachedPrice(); as cached) {
+    <p class="price-note">Cached input ({{ cached }} / 1M) is not included.</p>
+  }
+</section>

@@ -1,0 +1,142 @@
+<div class="shell">
+  <div class="progress-slot" aria-hidden="true">
+    @if (busy()) {
+      <mat-progress-bar mode="indeterminate" aria-label="Updating estimate" />
+    }
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">PT</span>
+      <div>
+        <h1>Prompt Token Analyzer</h1>
+        <p>Estimate how many tokens a prompt will use, and what that may cost, before you call a model.</p>
+      </div>
+    </div>
+    <app-model-select
+      [models]="models()"
+      [modelId]="selectedModelId()"
+      [disabled]="modelsLoading()"
+      (modelIdChange)="selectModel($event)"
+    />
+  </header>
+
+  @if (modelsError(); as message) {
+    <div class="banner" role="alert">
+      <p>{{ message }}</p>
+      <button matButton="outlined" type="button" (click)="loadModels()">Retry</button>
+    </div>
+  }
+
+  <div class="layout">
+    <app-prompt-editor
+      [maxLength]="maxCharacters()"
+      [wordCount]="editorWords()"
+      [characterCount]="editorCharacters()"
+      [tokenCount]="editorCount()?.tokenCount ?? null"
+      [loading]="editorLoading()"
+      [error]="editorError()"
+      (textChange)="userPrompt.set($event)"
+    />
+
+    <aside class="rail" [attr.aria-busy]="analysisLoading()">
+      <div class="rail-head">
+        <h2>Full request</h2>
+        <p>Counts include system instructions, the user prompt, and additional context.</p>
+      </div>
+      @if (analysisError(); as message) {
+        <p class="inline-error" role="alert">{{ message }}</p>
+      }
+      <div class="stat-grid">
+        <app-stat-card
+          label="Characters"
+          [value]="formatCount(analysis()?.characterCount)"
+          hint="All sections"
+        />
+        <app-stat-card label="Words" [value]="formatCount(analysis()?.wordCount)" hint="All sections" />
+        <app-stat-card
+          label="Input tokens"
+          [value]="formatCount(analysis()?.totalInputTokens)"
+          hint="Estimated plain text"
+        />
+        <app-stat-card
+          label="Output tokens"
+          [value]="formatCount(expectedOutputTokens())"
+          hint="Expected completion"
+        />
+        <app-stat-card
+          label="Total tokens"
+          [value]="formatCount(analysis()?.totalTokens)"
+          hint="Input + output"
+          [emphasis]="true"
+        />
+      </div>
+
+      <app-cost-estimator
+        [analysis]="analysis()"
+        [model]="selectedModel()"
+        [verifiedOn]="pricing()?.verifiedOn ?? null"
+        [pricingNote]="pricing()?.note ?? ''"
+        [source]="pricing()?.source ?? ''"
+        [maxOutputTokens]="maxOutputTokens()"
+        [loading]="analysisLoading()"
+        (outputTokensChange)="expectedOutputTokens.set($event)"
+      />
+    </aside>
+
+    <section class="panel advanced">
+      <div class="panel-head">
+        <div>
+          <h2>Advanced prompt analysis</h2>
+          <p>
+            Split the request into three parts. Each part is tokenized on its own, then the token
+            counts are added. The user prompt is the editor above.
+          </p>
+        </div>
+      </div>
+
+      <div class="section-grid">
+        <app-prompt-section
+          inputId="system-prompt"
+          label="System instructions"
+          hint="Role, rules, and output format."
+          placeholder="You are a helpful assistant."
+          [rows]="6"
+          [maxLength]="maxCharacters()"
+          [tokenCount]="analysis()?.systemPromptTokens ?? null"
+          (textChange)="systemPrompt.set($event)"
+        />
+        <app-prompt-section
+          inputId="extra-context"
+          label="Additional context"
+          hint="Reference material that should travel with the prompt."
+          placeholder="Additional information the model should see."
+          [rows]="6"
+          [maxLength]="maxCharacters()"
+          [tokenCount]="analysis()?.contextTokens ?? null"
+          (textChange)="context.set($event)"
+        />
+      </div>
+
+      <app-token-breakdown [analysis]="analysis()" />
+
+      <div class="notice">
+        <p>
+          <strong>These numbers estimate plain text.</strong>
+          They are not the exact token count an API request will bill. Chat formatting, tool
+          definitions, images, audio, and other multimodal inputs can add tokens.
+        </p>
+        @if (limitations().length > 0) {
+          <details>
+            <summary>Tokenizer and pricing limitations</summary>
+            <ul>
+              @for (item of limitations(); track item) {
+                <li>{{ item }}</li>
+              }
+            </ul>
+          </details>
+        }
+      </div>
+    </section>
+  </div>
+</div>
